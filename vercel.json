@@ -1,4 +1,5 @@
 {
+  "framework": null,
   "functions": {
     "api/convert.py": {
       "maxDuration": 60,
