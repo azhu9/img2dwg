@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image to DXF</title>
+<meta name="description" content="Convert PNG and JPG images into clean, inch-scaled vector DXF sketches for Onshape and other CAD tools.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23161a1d'/%3E%3Cpath d='M7 23 L13 9 L19 18 L25 11' fill='none' stroke='%23ff5a1f' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f3f2ee;
+    --panel: #ffffff;
+    --ink: #161a1d;
+    --muted: #6b7075;
+    --line: #dcdad3;
+    --accent: #ff5a1f;
+    --accent-ink: #ffffff;
+    --canvas: #fbfaf7;
+    --grid: #e8e6df;
+    --grid-major: #d6d3ca;
+    --shape-fill: rgba(255, 90, 31, 0.10);
+    --shape-stroke: #161a1d;
+    --node: #ff5a1f;
+    --danger: #c0352b;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111416;
+      --panel: #181c1f;
+      --ink: #eceae4;
+      --muted: #9aa0a5;
+      --line: #2a3034;
+      --canvas: #14181a;
+      --grid: #1d2225;
+      --grid-major: #283035;
+      --shape-fill: rgba(255, 90, 31, 0.16);
+      --shape-stroke: #eceae4;
+      --danger: #ff6b5e;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.45 "IBM Plex Sans", system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding: 22px 28px 14px;
+  }
+  header h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  header h1 span { color: var(--accent); }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  main {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 18px;
+    padding: 0 28px 28px;
+    align-items: start;
+  }
+  @media (max-width: 860px) {
+    main { grid-template-columns: minmax(0, 1fr); padding: 0 16px 20px; }
+    header { padding: 18px 16px 12px; }
+  }
+
+  .panel {
+    min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  aside.panel { padding: 6px 18px 18px; }
+  .group { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .group:last-child { border-bottom: 0; }
+  .group h2 {
+    font: 500 11px/1 "IBM Plex Mono", monospace; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 12px;
+  }
+
+  /* drop zone */
+  .drop {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    min-height: 120px; padding: 14px; text-align: center; cursor: pointer;
+    border: 1.5px dashed var(--line); border-radius: 8px; color: var(--muted);
+    transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--shape-fill); }
+  .drop strong { color: var(--ink); font-weight: 500; }
+  .drop img {
+    max-width: 100%; max-height: 110px; object-fit: contain; border-radius: 4px;
+    background: repeating-conic-gradient(var(--grid) 0% 25%, transparent 0% 50%) 0 0 / 12px 12px;
+  }
+  .drop .fname { font-size: 12px; word-break: break-all; }
+  input[type=file] { display: none; }
+
+  /* fields */
+  .row { display: flex; gap: 8px; align-items: center; }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label.lbl { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px; }
+  .field label.lbl output { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--muted); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; flex: none; }
+  .seg button {
+    font: inherit; font-size: 13px; padding: 7px 11px; border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--ink); color: var(--bg); }
+
+  .num {
+    display: flex; align-items: center; flex: 1; min-width: 0;
+    border: 1px solid var(--line); border-radius: 7px; background: var(--canvas);
+  }
+  .num input {
+    flex: 1; min-width: 0; font: 500 15px "IBM Plex Mono", monospace; color: var(--ink);
+    border: 0; background: transparent; padding: 7px 10px; outline: none;
+  }
+  .num span { padding-right: 10px; color: var(--muted); font-size: 13px; }
+  .num:focus-within { border-color: var(--accent); }
+
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+  .check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+
+  details summary { cursor: pointer; font-size: 14px; color: var(--muted); list-style: none; }
+  details summary::before { content: "+ "; font-family: "IBM Plex Mono", monospace; }
+  details[open] summary::before { content: "– "; }
+  details[open] summary { margin-bottom: 14px; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    font: 600 15px "IBM Plex Sans", sans-serif; padding: 11px 14px; border-radius: 8px; border: 0;
+    background: var(--accent); color: var(--accent-ink); cursor: pointer;
+  }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* preview */
+  section.view { display: flex; flex-direction: column; overflow: hidden; }
+  .bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px;
+  }
+  .stats { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); }
+  .stats b { color: var(--ink); font-weight: 500; }
+  .status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .status.err { color: var(--danger); }
+  .spin {
+    width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%;
+    animation: r .7s linear infinite; display: none;
+  }
+  .busy .spin { display: inline-block; }
+  @keyframes r { to { transform: rotate(360deg); } }
+
+  .stage { position: relative; background: var(--canvas); aspect-ratio: 16 / 10; min-height: 300px; }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .empty {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 14px; text-align: center; padding: 20px;
+  }
+  .legend { display: flex; gap: 14px; align-items: center; color: var(--muted); }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--node); margin-right: 5px; vertical-align: middle; }
+
+  #svg .gr { stroke: var(--grid); }
+  #svg .gm { stroke: var(--grid-major); }
+  #svg .ax { stroke: var(--accent); stroke-opacity: .35; }
+  #svg .sh { fill: var(--shape-fill); stroke: var(--shape-stroke); }
+  #svg .nd { fill: var(--node); }
+  #svg .dl { stroke: var(--muted); }
+  #svg .dt { fill: var(--muted); }
+  #svg .dt text { stroke: var(--canvas); }
+
+  .help { padding: 14px 16px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .help b { color: var(--ink); font-weight: 500; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Image <span>→</span> DXF</h1>
+  <p>PNG / JPG to a clean, scaled vector sketch for Onshape.</p>
+</header>
+
+<main>
+  <aside class="panel">
+    <div class="group">
+      <h2>Image</h2>
+      <label class="drop" id="drop" for="file">
+        <strong>Drop an image here</strong>
+        <span>or click to choose · PNG, JPG, WEBP…</span>
+      </label>
+      <input type="file" id="file" accept="image/*">
+    </div>
+
+    <div class="group">
+      <h2>Size</h2>
+      <div class="row">
+        <div class="seg" id="dim">
+          <button type="button" data-v="width" class="on">Width</button>
+          <button type="button" data-v="height">Height</button>
+        </div>
+        <div class="num"><input id="size" type="number" min="0.01" step="any" value="4" inputmode="decimal"><span>in</span></div>
+      </div>
+      <div class="hint">Drawing is centered on the origin, units set to inches.</div>
+    </div>
+
+    <div class="group">
+      <h2>Shape</h2>
+      <div class="field">
+        <div class="seg" id="mode">
+          <button type="button" data-v="fill" class="on">Solid shapes</button>
+          <button type="button" data-v="edges">Line drawing</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="check"><input type="checkbox" id="invert"> Light shape on dark background</label>
+      </div>
+      <div class="field" id="alpha_field" hidden>
+        <label class="check"><input type="checkbox" id="use_alpha"> Use transparency</label>
+        <div class="hint">This image has a transparent background. Everything visible becomes the shape, including white parts.</div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Cleanup</h2>
+      <div class="field">
+        <label class="lbl" for="min_area">Dot removal <output id="min_area_o"></output></label>
+        <input type="range" id="min_area" min="0" max="1" step="0.01" value="0.05">
+        <div class="hint">Raise it if stray specks remain.</div>
+      </div>
+      <div class="field">
+        <label class="lbl" for="smooth">Corner roundness <output id="smooth_o"></output></label>
+        <input type="range" id="smooth" min="0" max="1.33" step="0.01" value="1">
+        <div class="hint">Lower keeps sharp corners; higher rounds them.</div>
+      </div>
+      <div class="field">
+        <label class="lbl" for="line_tol">Straight-line snap <output id="line_tol_o"></output></label>
+        <input type="range" id="line_tol" min="0.3" max="4" step="0.1" value="1.5">
+        <div class="hint">Higher turns more near-straight edges into single lines.</div>
+      </div>
+      <details>
+        <summary>Advanced</summary>
+        <div class="field">
+          <label class="check"><input type="checkbox" id="auto_th" checked> Automatic threshold</label>
+        </div>
+        <div class="field" id="th_field" hidden>
+          <label class="lbl" for="threshold">Threshold <output id="threshold_o"></output></label>
+          <input type="range" id="threshold" min="1" max="254" step="1" value="128">
+        </div>
+        <div class="field">
+          <label class="lbl" for="blur">Pre-blur <output id="blur_o"></output></label>
+          <input type="range" id="blur" min="0" max="4" step="0.5" value="1">
+        </div>
+        <div class="field">
+          <label class="lbl" for="despeckle">Speckle filter <output id="despeckle_o"></output></label>
+          <input type="range" id="despeckle" min="0" max="9" step="1" value="3">
+        </div>
+      </details>
+    </div>
+
+    <div class="group">
+      <button class="btn" id="download" disabled>Download DXF</button>
+    </div>
+  </aside>
+
+  <section class="panel view">
+    <div class="bar">
+      <div class="stats mono" id="stats"><span>No drawing yet</span></div>
+      <div class="status" id="status"><span class="spin"></span><span id="status_t"></span></div>
+    </div>
+    <div class="stage" id="stage">
+      <svg id="svg" xmlns="http://www.w3.org/2000/svg" aria-label="Vector preview"></svg>
+      <div class="empty" id="empty">Your vector preview appears here.</div>
+    </div>
+    <div class="bar">
+      <label class="check"><input type="checkbox" id="show_nodes" checked> Show nodes</label>
+      <div class="legend"><span><i></i>where lines and curves meet</span></div>
+    </div>
+    <div class="help">
+      <b>In Onshape:</b> start a sketch, click <b>Insert DXF or DWG</b>, choose this file and inches.
+      To resize later, the <b>first dimension</b> you add to the sketch scales the whole logo.
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const state = { blob: null, name: "drawing", dim: "width", mode: "fill", result: null };
+  let timer = null, ctrl = null, seq = 0;
+
+  // ---------- image loading: flatten onto white, cap size, send as PNG
+  async function loadFile(file) {
+    if (!file || !file.type.startsWith("image/")) { setStatus("That file isn't an image.", true); return; }
+    state.name = file.name.replace(/\.[^.]+$/, "") || "drawing";
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = async () => {
+      const max = 2000;
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.naturalWidth * k));
+      c.height = Math.max(1, Math.round(img.naturalHeight * k));
+      const g = c.getContext("2d", { willReadFrequently: true });
+      g.drawImage(img, 0, 0, c.width, c.height);   // keep transparency; the server decides how to use it
+      const px = g.getImageData(0, 0, c.width, c.height).data;
+      let clear = 0, n = 0;
+      for (let i = 3; i < px.length; i += 4 * 7) { n++; if (px[i] < 128) clear++; }
+      const transparent = clear / n > 0.01;
+      $("alpha_field").hidden = !transparent;
+      $("use_alpha").checked = transparent;
+      state.blob = await new Promise((r) => c.toBlob(r, "image/png"));
+      $("drop").innerHTML = `<img src="${url}" alt=""><span class="fname mono"></span>`;
+      $("drop").querySelector(".fname").textContent = file.name;
+      convertNow();
+    };
+    img.onerror = () => setStatus("Couldn't read that image.", true);
+    img.src = url;
+  }
+
+  $("file").addEventListener("change", (e) => loadFile(e.target.files[0]));
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => loadFile(e.dataTransfer.files[0]));
+  window.addEventListener("paste", (e) => {
+    const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"));
+    if (item) loadFile(item.getAsFile());
+  });
+
+  // ---------- controls
+  function seg(id, key) {
+    $(id).addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      [...$(id).children].forEach((x) => x.classList.toggle("on", x === b));
+      state[key] = b.dataset.v; schedule();
+    });
+  }
+  seg("dim", "dim"); seg("mode", "mode");
+
+  const fmt = { min_area: (v) => v + " %", smooth: (v) => (+v).toFixed(2), line_tol: (v) => v + " px",
+                threshold: (v) => v, blur: (v) => v + " px", despeckle: (v) => (+v ? v + " px" : "off") };
+  Object.keys(fmt).forEach((id) => {
+    const el = $(id), out = $(id + "_o");
+    const upd = () => (out.textContent = fmt[id](el.value));
+    upd(); el.addEventListener("input", () => { upd(); schedule(); });
+  });
+  $("size").addEventListener("input", schedule);
+  $("invert").addEventListener("change", schedule);
+  $("use_alpha").addEventListener("change", schedule);
+  $("auto_th").addEventListener("change", () => { $("th_field").hidden = $("auto_th").checked; schedule(); });
+  $("show_nodes").addEventListener("change", () => state.result && draw(state.result));
+
+  function schedule() { clearTimeout(timer); timer = setTimeout(convertNow, 350); }
+
+  // ---------- conversion
+  function setStatus(t, err = false, busy = false) {
+    $("status_t").textContent = t;
+    $("status").classList.toggle("err", err);
+    $("status").classList.toggle("busy", busy);
+  }
+
+  async function convertNow() {
+    if (!state.blob) return;
+    const size = parseFloat($("size").value);
+    if (!(size > 0)) { setStatus("Enter a size above 0 inches.", true); return; }
+    const q = new URLSearchParams({
+      [state.dim]: size, mode: state.mode, invert: $("invert").checked ? "1" : "0",
+      use_alpha: !$("alpha_field").hidden && $("use_alpha").checked ? "1" : "0",
+      min_area: $("min_area").value, smooth: $("smooth").value, line_tol: $("line_tol").value,
+      blur: $("blur").value, despeckle: $("despeckle").value,
+    });
+    if (!$("auto_th").checked) q.set("threshold", $("threshold").value);
+
+    ctrl?.abort(); ctrl = new AbortController();
+    const my = ++seq;
+    setStatus("Converting…", false, true);
+    try {
+      const res = await fetch("/api/convert?" + q, { method: "POST", body: state.blob,
+        headers: { "Content-Type": "image/png" }, signal: ctrl.signal });
+      const data = await res.json().catch(() => ({ error: `Server error (${res.status})` }));
+      if (my !== seq) return;
+      if (!res.ok || data.error) throw new Error(data.error || `Server error (${res.status})`);
+      state.result = data;
+      draw(data);
+      $("download").disabled = false;
+      setStatus("Ready");
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      setStatus(e.message, true);
+    }
+  }
+
+  // ---------- preview
+  function niceStep(span) {
+    const raw = span / 12, p = Math.pow(10, Math.floor(Math.log10(raw)));
+    return [1, 2, 5, 10].map((m) => m * p).find((s) => s >= raw);
+  }
+
+  function draw(r) {
+    $("empty").hidden = true;
+    const svg = $("svg");
+    const w = r.width, h = r.height;
+    const pad = Math.max(w, h) * 0.12;
+    const vb = [-w / 2 - pad, -h / 2 - pad, w + 2 * pad, h + 2 * pad];
+    svg.setAttribute("viewBox", vb.join(" "));
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    const step = niceStep(Math.max(vb[2], vb[3]));
+    const sw = Math.max(vb[2], vb[3]) / 700;          // ~1.4px stroke at typical sizes
+    const ext = Math.max(vb[2], vb[3]) * 2;
+
+    let grid = "";
+    for (let x = Math.floor(-ext / step) * step; x <= ext; x += step)
+      grid += `<line x1="${x}" y1="${-ext}" x2="${x}" y2="${ext}" class="${Math.round(x / step) % 5 ? "gr" : "gm"}" stroke-width="${sw * 0.7}"/>`;
+    for (let y = Math.floor(-ext / step) * step; y <= ext; y += step)
+      grid += `<line x1="${-ext}" y1="${y}" x2="${ext}" y2="${y}" class="${Math.round(y / step) % 5 ? "gr" : "gm"}" stroke-width="${sw * 0.7}"/>`;
+    const axes = `<line x1="${-ext}" y1="0" x2="${ext}" y2="0" class="ax" stroke-width="${sw}"/>
+                  <line x1="0" y1="${-ext}" x2="0" y2="${ext}" class="ax" stroke-width="${sw}"/>`;
+
+    const d = r.paths.join(" ");
+    const shape = `<path d="${d}" class="sh" fill-rule="evenodd"
+                     stroke-width="${sw * 1.3}" stroke-linejoin="round" vector-effect="none"/>`;
+    const nodes = $("show_nodes").checked
+      ? r.nodes.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${sw * 2.6}" class="nd"/>`).join("")
+      : "";
+
+    // dimension lines
+    const off = pad * 0.3, fs = Math.max(w, h) * 0.022, tick = fs * 0.45;
+    const dims = `
+      <g class="dl" stroke-width="${sw}" fill="none">
+        <line x1="${-w / 2}" y1="${h / 2 + off}" x2="${w / 2}" y2="${h / 2 + off}"/>
+        <line x1="${-w / 2}" y1="${h / 2 + off - tick}" x2="${-w / 2}" y2="${h / 2 + off + tick}"/>
+        <line x1="${w / 2}" y1="${h / 2 + off - tick}" x2="${w / 2}" y2="${h / 2 + off + tick}"/>
+        <line x1="${-w / 2 - off}" y1="${-h / 2}" x2="${-w / 2 - off}" y2="${h / 2}"/>
+        <line x1="${-w / 2 - off - tick}" y1="${-h / 2}" x2="${-w / 2 - off + tick}" y2="${-h / 2}"/>
+        <line x1="${-w / 2 - off - tick}" y1="${h / 2}" x2="${-w / 2 - off + tick}" y2="${h / 2}"/>
+      </g>
+      <g class="dt" font-family="IBM Plex Mono, monospace" font-size="${fs}" text-anchor="middle">
+        <text x="0" y="${h / 2 + off + fs * 1.25}" paint-order="stroke" stroke-width="${fs * 0.3}">${w.toFixed(3)} in</text>
+        <text transform="translate(${-w / 2 - off - fs * 0.55} 0) rotate(-90)" paint-order="stroke" stroke-width="${fs * 0.3}">${h.toFixed(3)} in</text>
+      </g>`;
+
+    svg.innerHTML = grid + axes + shape + nodes + dims;
+    $("stats").innerHTML =
+      `<span><b>${w.toFixed(3)} × ${h.toFixed(3)}</b> in</span>` +
+      `<span><b>${r.profiles}</b> profiles</span>` +
+      `<span><b>${r.lines}</b> lines</span>` +
+      `<span><b>${r.splines}</b> curves</span>`;
+  }
+
+  // ---------- download
+  $("download").addEventListener("click", () => {
+    if (!state.result) return;
+    const blob = new Blob([state.result.dxf], { type: "application/dxf" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${state.name}.dxf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+})();
+</script>
+</body>
+</html>

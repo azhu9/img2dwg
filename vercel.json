@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/convert.py": {
+      "maxDuration": 60,
+      "includeFiles": "api/_core.py"
+    }
+  }
+}
